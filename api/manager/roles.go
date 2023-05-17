@@ -3,7 +3,6 @@ package manager
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/auth0/go-auth0/management"
 )
@@ -30,7 +29,7 @@ var Hierarchy = map[string][]string{
 var division map[string]string // Division maps each `role name` to its division (parent)
 var RoleID map[string]string   // RoleID maps each `role name` to its `role id`
 
-// Generate the value of `Division“
+// Generate the value of `Division` and `RoleID“
 func RoleSetup() error {
 	division = make(map[string]string)
 	for div, roles := range Hierarchy {
@@ -38,94 +37,85 @@ func RoleSetup() error {
 			division[role] = div
 		}
 	}
-	return nil
-}
 
-// Retrieve the list role objects for each rolename in rolenames and returns
-// Preconditions:
-// - each rolename in rolenames is a valid rolename and exists in Auth0's roles
-// Note:
-// - Auth0API.Role.List() Returns a list of roles sorted by role.Name
-func RetrieveRoleByNames(rolenames []string) ([]*management.Role, error) {
-	sort.Strings(rolenames)
-
-	// Note: List only returns by default 50 roles per page and maximum 100 per page
 	rolelist, err := Auth0API.Role.List(
 		management.PerPage(100),
 	)
+
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	left_bound := 0
-	roles := make([]*management.Role, 0)
-	for _, rolename := range rolenames {
-		left, right := left_bound, len(rolelist.Roles)-1
-		for left < right {
-			mid := (left + right) >> 1
-			if *rolelist.Roles[mid].Name < rolename {
-				left = mid + 1
-			} else {
-				right = mid
-			}
-		}
-		roles = append(roles, rolelist.Roles[left])
-		left_bound = left
+	RoleID = make(map[string]string)
+	for _, role := range rolelist.Roles {
+		RoleID[*role.Name] = *role.ID
 	}
-	return roles, nil
+
+	return nil
 }
 
 // Takes a list of rolenames which is to be assigned to a single user
 // and checks whether such combination of roles violates the ruless
-func ValidateRoles(rolenames []string) []error {
+func ValidateRoles(roles [][]string) []error {
 	// no roles => no issue
-	if rolenames == nil || len(rolenames) == 0 {
+	if roles == nil || len(roles) == 0 {
 		return nil
 	}
 
 	errors := make([]error, 0)
-	rolenames_by_KLPD := make(map[string][]Pair)
-	for _, rolename := range rolenames {
-		parts := strings.Split(rolename, ":")
-		if len(parts) != 3 {
-			errors = append(errors, fmt.Errorf("Role %s is not in correct format", rolename))
-			continue
-		}
 
-		KLPD, satuanKerja, roleFunction := parts[0], parts[1], parts[2]
-		rolenames_by_KLPD[KLPD] = append(rolenames_by_KLPD[KLPD], Pair{First: satuanKerja, Second: roleFunction})
+	// Check existance of organizations
+	for _, role := range roles {
+		org_name := role[0] + "-" + role[1]
+		_, err := Auth0API.Organization.ReadByName(org_name)
+
+		if err != nil {
+			errors = append(errors, fmt.Errorf("Error when reading %s. Err: %s", org_name, err))
+		}
 	}
 
 	if len(errors) != 0 {
 		return errors
 	}
 
-	for KLPD, rolenames := range rolenames_by_KLPD {
-		// division[role] must be the same for all role in roles
-		var div string = ""
-		role_PP, role_PPK := false, false
+	sort.Slice(roles, func(i, j int) bool {
+		return roles[i][0] < roles[j][0]
+	})
 
-		for _, rolename := range rolenames {
-			rolename_div, ok := division[rolename.Second]
-			if !ok {
-				errors = append(errors, fmt.Errorf("Role Function not found: %s", rolename.Second))
-			} else if div == "" {
-				div = rolename_div
-			} else if div != rolename_div {
-				errors = append(errors, fmt.Errorf("User's roles in %s may not cross-function different division: %s, %s", KLPD, div, rolename_div))
-			}
+	prev_klpd, div := "", ""
+	role_PP, role_PPK := false, false
 
-			if rolename.Second == "PP" {
-				role_PP = true
-			} else if rolename.Second == "PPK" {
-				role_PPK = true
-			}
+	// division[role] must be the same for all role in roles
+	for _, role := range roles {
+		if prev_klpd != role[0] {
+			prev_klpd, div = role[0], ""
+			role_PP, role_PPK = false, false
+		}
+
+		role_div, ok := division[role[2]]
+		if !ok {
+			errors = append(errors, fmt.Errorf("Role Function not found: %s", role[2]))
+		} else if div == "" {
+			div = role_div
+		} else if div != role_div {
+			errors = append(errors, fmt.Errorf("User's roles in %s may not cross-function different division: %s, %s", role[0], div, role_div))
+		}
+
+		if role[2] == "PP" {
+			role_PP = true
+		} else if role[2] == "PPK" {
+			role_PPK = true
 		}
 
 		// special case: a user cannot have PP and PPK at the same time
 		if role_PP && role_PPK {
-			errors = append(errors, fmt.Errorf("User's roles in %s may not contain PP and PPK at the same time", KLPD))
+			errors = append(errors, fmt.Errorf("User's roles in %s may not contain PP and PPK at the same time", role[0]))
+			break
 		}
+	}
+
+	if len(errors) != 0 {
+		return errors
 	}
 
 	if len(errors) != 0 {

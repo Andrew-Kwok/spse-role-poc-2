@@ -13,7 +13,7 @@ import (
 )
 
 // A middleware to validate whether the assigner is allowed to perform such action
-func ValidateRoles(next http.Handler) http.Handler {
+func ValidateRoleAuthority(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Read the original request body
 		buf, _ := ioutil.ReadAll(r.Body)
@@ -22,8 +22,14 @@ func ValidateRoles(next http.Handler) http.Handler {
 
 		// data type to extract token and roles from the request body
 		type token_and_roles struct {
-			Token string   `json:"token"`
-			Roles []string `json:"roles"`
+			Token string `json:"token"`
+			KLPD  []struct {
+				Name        string `json:"name"`
+				SatuanKerja []struct {
+					Name  string   `json:"name"`
+					Roles []string `json:"roles"`
+				} `json:"satuan-kerja"`
+			} `json:"klpd"`
 		}
 
 		var data token_and_roles
@@ -61,52 +67,49 @@ func ValidateRoles(next http.Handler) http.Handler {
 		}
 		assigner_uid := response.Sub
 
-		assignerRoleList, err := manager.Auth0API.User.Roles(assigner_uid)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-
-		// assignerPPE[satuanKerja] is true IFF assigner has "Admin PPE" role in "satuanKerja"
-		assignerPPE := make(map[string]bool)
-
-		// assignerAgency[satuanKerja] is true IFF assigner has "Admin Agency" role in "satuanKerja"
-		assignerAgency := make(map[string]bool)
-
-		for _, role := range assignerRoleList.Roles {
-			idx := strings.LastIndex(*role.Name, ":")
-			if idx == -1 {
-				continue
-			}
-			satuanKerja := (*role.Name)[:idx]
-			roleFunction := (*role.Name)[idx+1:]
-
-			if roleFunction == "Admin PPE" {
-				assignerPPE[satuanKerja] = true
-			} else if roleFunction == "Admin Agency" {
-				assignerAgency[satuanKerja] = true
-			}
-		}
-
-		for _, assignee_role := range data.Roles {
-			idx := strings.LastIndex(assignee_role, ":")
-			if idx == -1 {
-				http.Error(w, fmt.Sprintf("Role %s is not in correct format", assignee_role), http.StatusBadRequest)
-			}
-			satuanKerja := assignee_role[:idx]
-			roleFunction := assignee_role[idx+1:]
-
-			if roleFunction == "Admin PPE" || roleFunction == "Auditor" {
-				http.Error(w, "Action not allowed", http.StatusForbidden)
-				return
-			} else if roleFunction == "Admin Agency" {
-				if !assignerPPE[satuanKerja] {
-					http.Error(w, "Action not allowed", http.StatusForbidden)
+		for _, klpd := range data.KLPD {
+			for _, satuanKerja := range klpd.SatuanKerja {
+				org, err := manager.Auth0API.Organization.ReadByName(klpd.Name + "-" + satuanKerja.Name)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
-			} else {
-				if !assignerPPE[satuanKerja] && !assignerAgency[satuanKerja] {
-					http.Error(w, "Action not allowed", http.StatusForbidden)
+
+				assignerRoleList, err := manager.Auth0API.Organization.MemberRoles(*org.ID, assigner_uid)
+				if err != nil {
+					if strings.Contains(err.Error(), "404") {
+						http.Error(w, fmt.Sprintf("User has no administrator access in KLPD %s: Satuan Kerja %s", klpd.Name, satuanKerja.Name), http.StatusForbidden)
+						return
+					}
+
+					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
+				}
+
+				PPE, Agency := false, false
+				for _, role := range assignerRoleList.Roles {
+					if *role.Name == "Admin PPE" {
+						PPE = true
+					} else if *role.Name == "Admin Agency" {
+						Agency = true
+					}
+				}
+
+				for _, role := range satuanKerja.Roles {
+					if role == "Admin PPE" || role == "Auditor" {
+						http.Error(w, "Action not allowed", http.StatusForbidden)
+						return
+					} else if role == "Admin Agency" {
+						if !PPE {
+							http.Error(w, "Action not allowed", http.StatusForbidden)
+							return
+						}
+					} else {
+						if !PPE && !Agency {
+							http.Error(w, "Action not allowed", http.StatusForbidden)
+							return
+						}
+					}
 				}
 			}
 		}

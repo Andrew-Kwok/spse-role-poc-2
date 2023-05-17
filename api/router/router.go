@@ -21,12 +21,11 @@ func New() http.Handler {
 
 	// user functions
 	r.Post("/create", manager.CreateUserHandler)
-	r.Patch("/addroles", manager.AddRolesHandler)
 	r.Patch("/rewriteroles", manager.RewriteRolesHandler)
+	// r.Patch("/addroles", manager.AddRolesHandler)
 
 	r.Route("/", func(r chi.Router) {
-		r.Use(middleware.ValidateRoles)
-		// r.Use(middleware.EnsureValidToken())
+		r.Use(middleware.ValidateRoleAuthority)
 		r.Post("/create-protected", manager.CreateUserHandler)
 	})
 
