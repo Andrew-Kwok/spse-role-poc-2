@@ -20,10 +20,11 @@ func ValidateRoleAuthority(next http.Handler) http.Handler {
 		rdr1 := ioutil.NopCloser(bytes.NewBuffer(buf))
 		rdr2 := ioutil.NopCloser(bytes.NewBuffer(buf))
 
+		token := r.Header.Get("Token")
+
 		// data type to extract token and roles from the request body
-		type token_and_roles struct {
-			Token string `json:"token"`
-			KLPD  []struct {
+		type Roles struct {
+			KLPD []struct {
 				Name        string `json:"name"`
 				SatuanKerja []struct {
 					Name  string   `json:"name"`
@@ -32,7 +33,7 @@ func ValidateRoleAuthority(next http.Handler) http.Handler {
 			} `json:"klpd"`
 		}
 
-		var data token_and_roles
+		var data Roles
 		err := json.NewDecoder(rdr1).Decode(&data)
 
 		if err != nil {
@@ -41,13 +42,18 @@ func ValidateRoleAuthority(next http.Handler) http.Handler {
 		}
 
 		req, err := http.NewRequest("GET", "https://"+os.Getenv("AUTH0_DOMAIN")+"/userinfo", nil)
-		req.Header.Set("Authorization", "Bearer "+data.Token)
+		req.Header.Set("Authorization", "Bearer "+token)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			http.Error(w, res.Status, res.StatusCode)
+			return
+		}
 
 		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {

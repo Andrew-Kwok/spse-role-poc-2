@@ -27,6 +27,8 @@ func New() http.Handler {
 	r.Route("/", func(r chi.Router) {
 		r.Use(middleware.ValidateRoleAuthority)
 		r.Post("/create-protected", manager.CreateUserHandler)
+		r.Patch("/addroles-protected", manager.AddRolesHandler)
+		r.Patch("/deleteroles-protected", manager.DeleteRolesHandler)
 	})
 
 	return r
