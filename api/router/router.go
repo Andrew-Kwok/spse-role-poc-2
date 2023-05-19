@@ -21,8 +21,8 @@ func New() http.Handler {
 
 	// user functions
 	r.Post("/create", manager.CreateUserHandler)
-	r.Patch("/rewriteroles", manager.RewriteRolesHandler)
-	// r.Patch("/addroles", manager.AddRolesHandler)
+	r.Patch("/addroles", manager.AddRolesHandler)
+	r.Patch("/deleteroles", manager.DeleteRolesHandler)
 
 	r.Route("/", func(r chi.Router) {
 		r.Use(middleware.ValidateRoleAuthority)

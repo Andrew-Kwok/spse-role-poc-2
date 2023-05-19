@@ -10,8 +10,6 @@ import (
 	"github.com/auth0/go-auth0/management"
 )
 
-var Auth0API *management.Management
-
 func ConnectAPI() {
 	auth0API, err := management.New(
 		os.Getenv("AUTH0_DOMAIN"),
