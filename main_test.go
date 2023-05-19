@@ -490,25 +490,11 @@ func TestDeleteRoles(t *testing.T) {
 }
 
 // Extra Utility
-func deleteUser(email string) error {
+func TestDeleteAllTest(t *testing.T) {
+	setup(t)
 	userList, err := manager.Auth0API.User.List()
 	if err != nil {
-		return err
-	}
-
-	for _, user := range userList.Users {
-		if *user.Email == email {
-			manager.Auth0API.User.Delete(*user.ID)
-			return nil
-		}
-	}
-	return nil
-}
-
-func deleteAllTest() error {
-	userList, err := manager.Auth0API.User.List()
-	if err != nil {
-		return err
+		t.Fatal(err.Error())
 	}
 
 	uid_to_be_deleted := make([]string, 0)
@@ -520,6 +506,20 @@ func deleteAllTest() error {
 
 	for _, uid := range uid_to_be_deleted {
 		manager.Auth0API.User.Delete(uid)
+	}
+}
+
+func deleteUser(email string) error {
+	userList, err := manager.Auth0API.User.List()
+	if err != nil {
+		return err
+	}
+
+	for _, user := range userList.Users {
+		if *user.Email == email {
+			manager.Auth0API.User.Delete(*user.ID)
+			return nil
+		}
 	}
 	return nil
 }

@@ -20,8 +20,6 @@ func ValidateRoleAuthority(next http.Handler) http.Handler {
 		rdr1 := ioutil.NopCloser(bytes.NewBuffer(buf))
 		rdr2 := ioutil.NopCloser(bytes.NewBuffer(buf))
 
-		token := r.Header.Get("Token")
-
 		// data type to extract token and roles from the request body
 		type Roles struct {
 			KLPD []struct {
@@ -35,9 +33,14 @@ func ValidateRoleAuthority(next http.Handler) http.Handler {
 
 		var data Roles
 		err := json.NewDecoder(rdr1).Decode(&data)
-
 		if err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		token := r.Header.Get("Token")
+		if token == "" {
+			http.Error(w, "Missing Token", http.StatusNotFound)
 			return
 		}
 
