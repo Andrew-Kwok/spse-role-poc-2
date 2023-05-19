@@ -52,11 +52,10 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 		Connection: auth0.String("Username-Password-Authentication"),
 		Email:      auth0.String(user.Email),
 		Password:   auth0.String(user.Password),
-
-		// User Metadata For Roles
-		UserMetadata: &map[string]interface{}{
-			"klpd": user.KLPD,
-		},
+		// // User Metadata For Roles
+		// UserMetadata: &map[string]interface{}{
+		// 	"klpd": user.KLPD,
+		// },
 	}
 
 	// Create a new user
