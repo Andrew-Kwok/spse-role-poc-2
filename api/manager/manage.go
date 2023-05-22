@@ -65,20 +65,36 @@ func CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, klpd := range user.KLPD {
-		for _, satuanKerja := range klpd.SatuanKerja {
-			org, err := Auth0API.Organization.ReadByName(klpd.Name + "-" + satuanKerja.Name)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			Auth0API.Organization.AddMembers(*org.ID, []string{*newUser.ID})
+	if user.SuperAdmin {
+		err = Auth0API.Role.AssignUsers(RoleID["Super Admin"], []*management.User{newUser})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		for _, klpd := range user.KLPD {
+			for _, satuanKerja := range klpd.SatuanKerja {
+				org, err := Auth0API.Organization.ReadByName(klpd.Name + "-" + satuanKerja.Name)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				err = Auth0API.Organization.AddMembers(*org.ID, []string{*newUser.ID})
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 
-			roleIDs := make([]string, 0)
-			for _, role := range satuanKerja.Roles {
-				roleIDs = append(roleIDs, RoleID[role])
+				roleIDs := make([]string, 0)
+				for _, role := range satuanKerja.Roles {
+					roleIDs = append(roleIDs, RoleID[role])
+				}
+				err = Auth0API.Organization.AssignMemberRoles(*org.ID, *newUser.ID, roleIDs)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
-			Auth0API.Organization.AssignMemberRoles(*org.ID, *newUser.ID, roleIDs)
 		}
 	}
 
@@ -102,7 +118,7 @@ func AddRolesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user id cannot be empty", http.StatusBadRequest)
 		return
 	}
-	if user.KLPD == nil {
+	if user.KLPD == nil && !user.SuperAdmin {
 		http.Error(w, "To be added Roles cannot be empty", http.StatusBadRequest)
 		return
 	}
@@ -124,20 +140,42 @@ func AddRolesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, klpd := range user.KLPD {
-		for _, satuanKerja := range klpd.SatuanKerja {
-			org, err := Auth0API.Organization.ReadByName(klpd.Name + "-" + satuanKerja.Name)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			Auth0API.Organization.AddMembers(*org.ID, []string{user.ID})
+	if user.SuperAdmin {
+		_user, err := Auth0API.User.Read(user.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-			roleIDs := make([]string, 0)
-			for _, role := range satuanKerja.Roles {
-				roleIDs = append(roleIDs, RoleID[role])
+		err = Auth0API.Role.AssignUsers(RoleID["Super Admin"], []*management.User{_user})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		for _, klpd := range user.KLPD {
+			for _, satuanKerja := range klpd.SatuanKerja {
+				org, err := Auth0API.Organization.ReadByName(klpd.Name + "-" + satuanKerja.Name)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				err = Auth0API.Organization.AddMembers(*org.ID, []string{user.ID})
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+
+				roleIDs := make([]string, 0)
+				for _, role := range satuanKerja.Roles {
+					roleIDs = append(roleIDs, RoleID[role])
+				}
+				err = Auth0API.Organization.AssignMemberRoles(*org.ID, user.ID, roleIDs)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
-			Auth0API.Organization.AssignMemberRoles(*org.ID, user.ID, roleIDs)
 		}
 	}
 
@@ -161,61 +199,78 @@ func DeleteRolesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user id cannot be empty", http.StatusBadRequest)
 		return
 	}
-	if user.KLPD == nil {
+	if user.KLPD == nil && !user.SuperAdmin {
 		http.Error(w, "To be deleted Roles cannot be empty", http.StatusBadRequest)
 		return
 	}
 
-	var errors []error
-	// Validate the roles exist
-	for _, klpd := range user.KLPD {
-		for _, satuanKerja := range klpd.SatuanKerja {
-			org_name := klpd.Name + "-" + satuanKerja.Name
-			_, err := Auth0API.Organization.ReadByName(org_name)
-			if err != nil {
-				errors = append(errors, fmt.Errorf("Error when reading %s. Err: %s", org_name, err))
-				continue
-			}
+	if user.SuperAdmin {
+		_role, err := Auth0API.Role.Read(RoleID["Super Admin"])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		err = Auth0API.User.RemoveRoles(user.ID, []*management.Role{_role})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		var errors []error
+		// Validate the roles exist
+		for _, klpd := range user.KLPD {
+			for _, satuanKerja := range klpd.SatuanKerja {
+				org_name := klpd.Name + "-" + satuanKerja.Name
+				_, err := Auth0API.Organization.ReadByName(org_name)
+				if err != nil {
+					errors = append(errors, fmt.Errorf("Error when reading %s. Err: %s", org_name, err))
+					continue
+				}
 
-			for _, role := range satuanKerja.Roles {
-				_, ok := RoleID[role]
-				if !ok {
-					errors = append(errors, fmt.Errorf("Role Function in %s-%s not found: %s", klpd.Name, satuanKerja.Name, role))
+				for _, role := range satuanKerja.Roles {
+					_, ok := RoleID[role]
+					if !ok {
+						errors = append(errors, fmt.Errorf("Role Function in %s-%s not found: %s", klpd.Name, satuanKerja.Name, role))
+					}
 				}
 			}
 		}
-	}
 
-	if len(errors) > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
+		if len(errors) > 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
 
-		// parse messages into json
-		var errListStr []string
-		for _, err := range errors {
-			errListStr = append(errListStr, err.Error())
+			// parse messages into json
+			var errListStr []string
+			for _, err := range errors {
+				errListStr = append(errListStr, err.Error())
+			}
+
+			json.NewEncoder(w).Encode(ErrorMessage{
+				Errors: errListStr,
+			})
+			return
 		}
 
-		json.NewEncoder(w).Encode(ErrorMessage{
-			Errors: errListStr,
-		})
-		return
-	}
+		for _, klpd := range user.KLPD {
+			for _, satuanKerja := range klpd.SatuanKerja {
+				org_name := klpd.Name + "-" + satuanKerja.Name
+				org, err := Auth0API.Organization.ReadByName(org_name)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Error when reading %s. Err: %s", org_name, err), http.StatusInternalServerError)
+					continue
+				}
 
-	for _, klpd := range user.KLPD {
-		for _, satuanKerja := range klpd.SatuanKerja {
-			org_name := klpd.Name + "-" + satuanKerja.Name
-			org, err := Auth0API.Organization.ReadByName(org_name)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Error when reading %s. Err: %s", org_name, err), http.StatusInternalServerError)
-				continue
+				roleIDs := make([]string, 0)
+				for _, role := range satuanKerja.Roles {
+					roleIDs = append(roleIDs, RoleID[role])
+				}
+				err = Auth0API.Organization.DeleteMemberRoles(*org.ID, user.ID, roleIDs)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
-
-			roleIDs := make([]string, 0)
-			for _, role := range satuanKerja.Roles {
-				roleIDs = append(roleIDs, RoleID[role])
-			}
-			Auth0API.Organization.DeleteMemberRoles(*org.ID, user.ID, roleIDs)
 		}
 	}
 

@@ -76,6 +76,18 @@ func ValidateRoleAuthority(next http.Handler) http.Handler {
 		}
 		assigner_uid := response.Sub
 
+		isSuperAdmin := false
+		rolelist, err := manager.Auth0API.User.Roles(assigner_uid)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		for _, role := range rolelist.Roles {
+			if *role.Name == "Super Admin" {
+				isSuperAdmin = true
+			}
+		}
+
 		for _, klpd := range data.KLPD {
 			for _, satuanKerja := range klpd.SatuanKerja {
 				org, err := manager.Auth0API.Organization.ReadByName(klpd.Name + "-" + satuanKerja.Name)
@@ -84,40 +96,42 @@ func ValidateRoleAuthority(next http.Handler) http.Handler {
 					return
 				}
 
+				canAssignList := make([]string, 0)
+				if isSuperAdmin {
+					canAssignList = append(canAssignList, manager.CanAssign["Super Admin"]...)
+				}
+
 				assignerRoleList, err := manager.Auth0API.Organization.MemberRoles(*org.ID, assigner_uid)
 				if err != nil {
 					if strings.Contains(err.Error(), "404") {
-						http.Error(w, fmt.Sprintf("User has no administrator access in KLPD %s: Satuan Kerja %s", klpd.Name, satuanKerja.Name), http.StatusForbidden)
+						if !isSuperAdmin {
+							http.Error(w, fmt.Sprintf("User has no administrator access in KLPD %s: Satuan Kerja %s", klpd.Name, satuanKerja.Name), http.StatusForbidden)
+							return
+						}
+					} else {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
 						return
 					}
-
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				PPE, Agency := false, false
-				for _, role := range assignerRoleList.Roles {
-					if *role.Name == "Admin PPE" {
-						PPE = true
-					} else if *role.Name == "Admin Agency" {
-						Agency = true
+				} else {
+					for _, role := range assignerRoleList.Roles {
+						assignList, ok := manager.CanAssign[*role.Name]
+						if ok {
+							canAssignList = append(canAssignList, assignList...)
+						}
 					}
 				}
 
 				for _, role := range satuanKerja.Roles {
-					if role == "Admin PPE" || role == "Auditor" {
+					found := false
+					for _, assignList := range canAssignList {
+						if role == assignList {
+							found = true
+						}
+					}
+
+					if !found {
 						http.Error(w, "Action not allowed", http.StatusForbidden)
 						return
-					} else if role == "Admin Agency" {
-						if !PPE {
-							http.Error(w, "Action not allowed", http.StatusForbidden)
-							return
-						}
-					} else {
-						if !PPE && !Agency {
-							http.Error(w, "Action not allowed", http.StatusForbidden)
-							return
-						}
 					}
 				}
 			}

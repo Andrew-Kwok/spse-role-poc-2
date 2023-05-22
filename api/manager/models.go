@@ -32,6 +32,7 @@ type UserInfo struct {
 			Roles []string `json:"roles"`
 		} `json:"satuan-kerja"`
 	} `json:"klpd"`
+	SuperAdmin bool `json:"superadmin"`
 }
 
 // struct to store a list of error message

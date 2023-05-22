@@ -16,9 +16,16 @@ import (
 // 2. For "Pelaku Pengadaan LPSE", a single user in the same KLPD cannot be both "PPK" and "PP"
 // 3. A single user may have different function in different "KLPD"
 var Hierarchy = map[string][]string{
+	"Super Admin":           {"Super Admin"},
 	"Pengelola LPSE":        {"Admin PPE", "Admin Agency", "Verifikator", "Helpdesk"},
 	"Pelaku Pengadaan LPSE": {"PPK", "KUPBJ", "Anggota Pokmil", "PP"},
 	"Auditor":               {"Auditor"},
+}
+
+var CanAssign = map[string][]string{
+	"Super Admin":  {"Super Admin", "Admin PPE", "Auditor"},
+	"Admin PPE":    {"Admin Agency"},
+	"Admin Agency": {"PPK", "KUPBJ", "Anggota Pokmil", "PP", "Verifikator", "Helpdesk"},
 }
 
 var division map[string]string // Division maps each `role name` to its division (parent)
@@ -62,7 +69,6 @@ func ValidateRolesCombination(user UserInfo, keepOldRolesOpt ...bool) []error {
 	}
 
 	errors := make([]error, 0)
-
 	for _, klpd := range user.KLPD {
 		div := ""
 		role_PP, role_PPK := false, false
@@ -157,6 +163,11 @@ func ValidateRolesCombination(user UserInfo, keepOldRolesOpt ...bool) []error {
 		// special case: a user cannot have PP and PPK at the same time
 		if role_PP && role_PPK {
 			errors = append(errors, fmt.Errorf("User's roles in %s may not contain PP and PPK at the same time", klpd))
+			break
+		}
+
+		if div != "" && user.SuperAdmin {
+			errors = append(errors, fmt.Errorf("User's roles in may not have roles in %s and be a superadmin", klpd))
 			break
 		}
 	}
