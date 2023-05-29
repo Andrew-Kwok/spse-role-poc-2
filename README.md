@@ -2,35 +2,50 @@
 
 Fill `MGMT_ACCESS_TOKEN=` in `.env`. This can be obtained from Auth0 > APIs > Auth0 Management API > API Explorer.
 
-Start the API by calling `go run .`. This will starts the API
+Start the API by calling `go run main.go`. This will starts the API
 To create a user, send a `GET` request to `localhost:3000/create` with request body
 ```
 {
     "email": "{user_email}",
     "password": "{user_password}",
-    "roles": ["{user_role_1_name}, {user_role_2_name}, ..."]
+    "klpd": [
+        {
+            "name": "{KLPD NAME}",
+            "satuan-kerja": [
+                {
+                    "name": "{SATUAN KERJA NAME}",
+                    "roles": [{ROLE 1 NAME, ROLE 2 NAME, ...}]
+                }
+            ]
+        }
+    ]
 }
 ```
-Available roles: `{"A1:Admin PPE", "A1:Admin Agency", "A1:Verifikator", "A1:Helpdesk", "A1:PPK", "A1:KUPBJ", "A1:Anggota Pokmil", "A1:PP", "A1:Auditor", "A2:Admin PPE", ..., "A3:Auditor"}` 
+
+Available KLPD: `{"a", "b"}`
+Available _Satuan Kerja_: `{"a1", "a2", "a3", "b1", "b2", "b3"}`
+Available roles: `{"Admin PPE", "Admin Agency", "Verifikator", "Helpdesk", "PPK", "KUPBJ", "Anggota Pokmil", "PP", "Auditor"}` 
 
 
-send a `PATCH` request to `localhost:3000/addroles`, `localhost:3000/rewriteroles` with request body
+send a `PATCH` request to `localhost:3000/addroles`, `localhost:3000/deleteroles` with request body
 ```
 {
     "id": "{user_id}",
-    "roles": ["{user_role_1_name}, {user_role_2_name}, ..."]
+    "klpd": [
+        {
+            "name": "{KLPD NAME}",
+            "satuan-kerja": [
+                {
+                    "name": "{SATUAN KERJA NAME}",
+                    "roles": [{ROLE 1 NAME, ROLE 2 NAME, ...}]
+                }
+            ]
+        }
+    ]
 }
 ```
-to add roles and to rewrite roles for user with {user_id} respectively.
-
-send a `GET` request to `localhost:3000/query` with request body
-```
-{
-    "assigner_uid": "{user_id}",
-    "create_role":  "{assignee_role_name}"
-}
-```
-to check if assigner is allowed to create user with `{create_role}`
+to add roles and to delete roles for user with {user_id} respectively.
 
 
-Note. I am unsure how to login to a user account through Auth0 API, thus query endpoint is created. Will be fixed once I know how, by default, the API is logged in as superuser.
+To access the token-protected API, set the header `TOKEN` with access token obtained from user login
+Then, access `localhost:3000/create-protected`, `localhost:3000/addroles-protected`, `localhost:3000/deleteroles-protected` with the same request type and request body as the endpoint above.
